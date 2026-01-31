@@ -1,0 +1,246 @@
+{% extends "base.html" %}
+
+{% block title %}Reports - WiFi IDS Dashboard{% endblock %}
+
+{% block content %}
+<h2>Security Reports</h2>
+
+<div class="card" style="margin-bottom: 20px;">
+    <h3>Generate Report</h3>
+    <div class="form-group">
+        <label for="reportDays">Period (Days):</label>
+        <select id="reportDays">
+            <option value="1">Last 24 Hours</option>
+            <option value="7" selected>Last 7 Days</option>
+            <option value="30">Last 30 Days</option>
+            <option value="90">Last 90 Days</option>
+        </select>
+    </div>
+    <div class="form-group">
+        <label for="reportDevice">Device (Optional):</label>
+        <select id="reportDevice">
+            <option value="">All Devices</option>
+        </select>
+    </div>
+    <button class="btn" onclick="generateReport()">Generate Report</button>
+</div>
+
+<div id="reportContainer" style="display: none;">
+    <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));">
+        <div class="card">
+            <h3>Total Alerts</h3>
+            <div class="stat-value" id="totalAlerts">-</div>
+            <div class="stat-label">in selected period</div>
+        </div>
+        <div class="card">
+            <h3>Critical</h3>
+            <div class="stat-value" id="criticalCount" style="color: #f44;">-</div>
+            <div class="stat-label">severity alerts</div>
+        </div>
+        <div class="card">
+            <h3>High</h3>
+            <div class="stat-value" id="highCount" style="color: #ff9800;">-</div>
+            <div class="stat-label">severity alerts</div>
+        </div>
+        <div class="card">
+            <h3>Medium</h3>
+            <div class="stat-value" id="mediumCount" style="color: #0d6efd;">-</div>
+            <div class="stat-label">severity alerts</div>
+        </div>
+        <div class="card">
+            <h3>Low</h3>
+            <div class="stat-value" id="lowCount" style="color: #198754;">-</div>
+            <div class="stat-label">severity alerts</div>
+        </div>
+    </div>
+
+    <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));">
+        <div class="card">
+            <h3>Alert Types</h3>
+            <div id="alertTypesList" style="font-size: 14px;">
+            </div>
+        </div>
+        <div class="card">
+            <h3>Top Source IPs</h3>
+            <div id="topSourcesList" style="font-size: 14px;">
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <h3>Alert Details</h3>
+        <div style="overflow-x: auto;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Timestamp</th>
+                        <th>Severity</th>
+                        <th>Type</th>
+                        <th>Title</th>
+                        <th>Source IP</th>
+                        <th>Dest IP</th>
+                    </tr>
+                </thead>
+                <tbody id="alertDetailsBody">
+                    <tr>
+                        <td colspan="6" style="text-align: center; padding: 20px;">No alerts</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div style="margin-top: 20px;">
+        <button class="btn" onclick="exportReportCSV()">Export as CSV</button>
+        <button class="btn btn-secondary" onclick="printReport()">Print Report</button>
+    </div>
+</div>
+
+<script>
+    let currentReport = null;
+
+    async function loadDevices() {
+        try {
+            const response = await fetch('/api/v1/devices');
+            const data = await response.json();
+            
+            const deviceSelect = document.getElementById('reportDevice');
+            if (data.devices && Array.isArray(data.devices)) {
+                data.devices.forEach(device => {
+                    const option = document.createElement('option');
+                    option.value = device.id;
+                    option.textContent = device.device_name || device.mac_address;
+                    deviceSelect.appendChild(option);
+                });
+            }
+        } catch (error) {
+            console.error('Error loading devices:', error);
+        }
+    }
+
+    async function generateReport() {
+        const days = document.getElementById('reportDays').value;
+        const deviceId = document.getElementById('reportDevice').value;
+        
+        try {
+            let url = `/api/report?days=${days}`;
+            if (deviceId) {
+                url += `&device_id=${deviceId}`;
+            }
+            
+            const response = await fetch(url);
+            const report = await response.json();
+            
+            currentReport = report;
+            displayReport(report);
+            document.getElementById('reportContainer').style.display = 'block';
+        } catch (error) {
+            console.error('Error generating report:', error);
+            alert('Failed to generate report');
+        }
+    }
+
+    function displayReport(report) {
+        document.getElementById('totalAlerts').textContent = report.total_alerts || 0;
+        document.getElementById('criticalCount').textContent = report.severity_breakdown?.critical || 0;
+        document.getElementById('highCount').textContent = report.severity_breakdown?.high || 0;
+        document.getElementById('mediumCount').textContent = report.severity_breakdown?.medium || 0;
+        document.getElementById('lowCount').textContent = report.severity_breakdown?.low || 0;
+        
+        const typesList = document.getElementById('alertTypesList');
+        typesList.innerHTML = '';
+        if (report.type_breakdown && Object.keys(report.type_breakdown).length > 0) {
+            Object.entries(report.type_breakdown).forEach(([type, count]) => {
+                const div = document.createElement('div');
+                div.style.marginBottom = '8px';
+                div.innerHTML = `<strong>${type}:</strong> ${count}`;
+                typesList.appendChild(div);
+            });
+        } else {
+            typesList.innerHTML = '<div>No alerts</div>';
+        }
+        
+        const sourcesList = document.getElementById('topSourcesList');
+        sourcesList.innerHTML = '';
+        if (report.top_sources && Object.keys(report.top_sources).length > 0) {
+            Object.entries(report.top_sources).forEach(([ip, count]) => {
+                const div = document.createElement('div');
+                div.style.marginBottom = '8px';
+                div.innerHTML = `<strong>${ip}:</strong> ${count}`;
+                sourcesList.appendChild(div);
+            });
+        } else {
+            sourcesList.innerHTML = '<div>No traffic</div>';
+        }
+        
+        const tbody = document.getElementById('alertDetailsBody');
+        tbody.innerHTML = '';
+        
+        if (report.alerts && report.alerts.length > 0) {
+            report.alerts.forEach(alert => {
+                const row = document.createElement('tr');
+                const timestamp = new Date(alert.timestamp).toLocaleString();
+                row.innerHTML = `
+                    <td>${timestamp}</td>
+                    <td><span class="badge badge-${alert.severity}">${alert.severity.toUpperCase()}</span></td>
+                    <td>${alert.type}</td>
+                    <td>${alert.title}</td>
+                    <td>${alert.source_ip || '-'}</td>
+                    <td>${alert.dest_ip || '-'}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        } else {
+            const row = document.createElement('tr');
+            row.innerHTML = '<td colspan="6" style="text-align: center; padding: 20px;">No alerts in selected period</td>';
+            tbody.appendChild(row);
+        }
+    }
+
+    function exportReportCSV() {
+        if (!currentReport) {
+            alert('No report generated');
+            return;
+        }
+        
+        let csv = 'Timestamp,Severity,Type,Title,Source IP,Dest IP\n';
+        
+        if (currentReport.alerts) {
+            currentReport.alerts.forEach(alert => {
+                csv += `"${alert.timestamp}","${alert.severity}","${alert.type}","${alert.title}","${alert.source_ip || ''}","${alert.dest_ip || ''}"\n`;
+            });
+        }
+        
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `report_${new Date().toISOString().split('T')[0]}.csv`;
+        a.click();
+        window.URL.revokeObjectURL(url);
+    }
+
+    function printReport() {
+        window.print();
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        loadDevices();
+        generateReport();
+    });
+</script>
+
+<style>
+    @media print {
+        nav, .form-group, button, .footer {
+            display: none;
+        }
+        
+        .card {
+            page-break-inside: avoid;
+            box-shadow: none;
+            border: 1px solid #ddd;
+        }
+    }
+</style>
+{% endblock %}

@@ -1,0 +1,802 @@
+{% extends "base.html" %}
+
+{% block title %}Payload Inspection - WiFi IDS{% endblock %}
+
+{% block extra_css %}
+<style>
+    .payload-container {
+        background: white;
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .payload-filters {
+        display: flex;
+        gap: 15px;
+        margin-bottom: 20px;
+        flex-wrap: wrap;
+        align-items: flex-end;
+    }
+    
+    .filter-group {
+        flex: 1;
+        min-width: 150px;
+    }
+    
+    .filter-group label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: 500;
+        font-size: 14px;
+    }
+    
+    .filter-group input,
+    .filter-group select {
+        width: 100%;
+        padding: 8px;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        font-size: 14px;
+    }
+    
+    .payload-list {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 15px;
+        margin-bottom: 20px;
+    }
+    
+    .payload-card {
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 6px;
+        padding: 15px;
+        cursor: pointer;
+        transition: all 0.3s;
+    }
+    
+    .payload-card:hover {
+        background: #fff;
+        border-color: #667eea;
+        box-shadow: 0 2px 8px rgba(102, 126, 234, 0.2);
+    }
+    
+    .payload-card-header {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 10px;
+    }
+    
+    .payload-format-badge {
+        display: inline-block;
+        padding: 4px 8px;
+        border-radius: 3px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+    
+    .format-json {
+        background: #e3f2fd;
+        color: #1976d2;
+    }
+    
+    .format-html {
+        background: #fff3e0;
+        color: #f57c00;
+    }
+    
+    .format-text {
+        background: #f3e5f5;
+        color: #7b1fa2;
+    }
+    
+    .format-binary {
+        background: #e0f2f1;
+        color: #00897b;
+    }
+    
+    .format-form {
+        background: #f1f8e9;
+        color: #558b2f;
+    }
+    
+    .payload-info {
+        font-size: 13px;
+        color: #666;
+    }
+    
+    .payload-info-item {
+        margin-bottom: 5px;
+    }
+    
+    .payload-info-label {
+        font-weight: 500;
+        color: #333;
+    }
+    
+    .payload-preview {
+        background: white;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        padding: 10px;
+        margin-top: 10px;
+        font-family: monospace;
+        font-size: 12px;
+        max-height: 150px;
+        overflow-y: auto;
+        word-break: break-all;
+        color: #666;
+    }
+    
+    .modal-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0,0,0,0.5);
+        z-index: 1000;
+    }
+    
+    .modal-overlay.active {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .modal-content {
+        background: white;
+        border-radius: 8px;
+        max-width: 1000px;
+        max-height: 90vh;
+        overflow-y: auto;
+        width: 90%;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    }
+    
+    .modal-header {
+        padding: 20px;
+        border-bottom: 1px solid #dee2e6;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .modal-close {
+        background: none;
+        border: none;
+        font-size: 24px;
+        cursor: pointer;
+        color: #999;
+    }
+    
+    .modal-body {
+        padding: 20px;
+    }
+    
+    .tabs {
+        display: flex;
+        border-bottom: 2px solid #dee2e6;
+        margin-bottom: 20px;
+    }
+    
+    .tab-btn {
+        padding: 12px 20px;
+        background: none;
+        border: none;
+        cursor: pointer;
+        color: #999;
+        font-size: 14px;
+        font-weight: 500;
+        border-bottom: 3px solid transparent;
+        margin-bottom: -2px;
+    }
+    
+    .tab-btn.active {
+        color: #667eea;
+        border-bottom-color: #667eea;
+    }
+    
+    .tab-content {
+        display: none;
+    }
+    
+    .tab-content.active {
+        display: block;
+    }
+    
+    .details-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    
+    .details-table td {
+        padding: 10px;
+        border-bottom: 1px solid #dee2e6;
+    }
+    
+    .details-table td:first-child {
+        font-weight: 600;
+        color: #333;
+        width: 200px;
+    }
+    
+    .payload-display {
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        padding: 15px;
+        font-family: monospace;
+        font-size: 12px;
+        max-height: 500px;
+        overflow-y: auto;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+    }
+    
+    .sensitive-item {
+        background: #fff3cd;
+        border-left: 4px solid #ffc107;
+        padding: 10px;
+        margin-bottom: 10px;
+        border-radius: 4px;
+    }
+    
+    .sensitive-label {
+        font-weight: 600;
+        color: #856404;
+    }
+    
+    .sensitive-value {
+        color: #856404;
+        font-family: monospace;
+        margin-top: 5px;
+    }
+    
+    .characteristics-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+    }
+    
+    .char-box {
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        padding: 15px;
+        text-align: center;
+    }
+    
+    .char-label {
+        font-size: 12px;
+        color: #666;
+        margin-bottom: 5px;
+    }
+    
+    .char-value {
+        font-size: 24px;
+        font-weight: 600;
+        color: #333;
+    }
+    
+    .pagination {
+        text-align: center;
+        padding: 20px;
+    }
+    
+    .pagination a,
+    .pagination span {
+        padding: 8px 12px;
+        margin: 0 2px;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        color: #667eea;
+        cursor: pointer;
+        display: inline-block;
+    }
+    
+    .pagination a:hover {
+        background-color: #f8f9fa;
+    }
+    
+    .pagination .active {
+        background-color: #667eea;
+        color: white;
+        border-color: #667eea;
+    }
+    
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin-bottom: 20px;
+    }
+    
+    .stat-box {
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 6px;
+        padding: 15px;
+        text-align: center;
+    }
+    
+    .stat-label {
+        font-size: 12px;
+        color: #666;
+        margin-bottom: 8px;
+    }
+    
+    .stat-value {
+        font-size: 28px;
+        font-weight: 600;
+        color: #333;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="margin-bottom: 30px;">
+    <h2>Packet Payload Inspection</h2>
+    <p style="color: #999;">Analyze and inspect captured network packet payloads</p>
+</div>
+
+<div class="payload-container">
+    <div class="stats-grid" id="statsGrid">
+        <div class="stat-box">
+            <div class="stat-label">Total Payloads</div>
+            <div class="stat-value" id="totalPayloads">0</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-label">JSON Payloads</div>
+            <div class="stat-value" id="jsonCount">0</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-label">With Sensitive Data</div>
+            <div class="stat-value" id="sensitiveCount">0</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-label">Binary Payloads</div>
+            <div class="stat-value" id="binaryCount">0</div>
+        </div>
+    </div>
+</div>
+
+<div class="payload-container">
+    <h3>Filters</h3>
+    <div class="payload-filters">
+        <div class="filter-group">
+            <label>Device</label>
+            <select id="filterDevice" onchange="applyFilters()">
+                <option value="">All Devices</option>
+            </select>
+        </div>
+        
+        <div class="filter-group">
+            <label>Format</label>
+            <select id="filterFormat" onchange="applyFilters()">
+                <option value="">All Formats</option>
+                <option value="JSON">JSON</option>
+                <option value="TEXT">Text</option>
+                <option value="HTML">HTML</option>
+                <option value="FORM">Form Data</option>
+                <option value="BINARY">Binary</option>
+            </select>
+        </div>
+        
+        <div class="filter-group">
+            <label>Sensitive Data</label>
+            <select id="filterSensitive" onchange="applyFilters()">
+                <option value="">All</option>
+                <option value="true">With Sensitive Data</option>
+                <option value="false">Without Sensitive Data</option>
+            </select>
+        </div>
+        
+        <div class="filter-group">
+            <label>Search</label>
+            <input type="text" id="searchKeyword" placeholder="Search in payloads..." onkeyup="debounceSearch()">
+        </div>
+        
+        <button class="btn" onclick="applyFilters()">Filter</button>
+        <button class="btn btn-secondary" onclick="clearFilters()">Clear</button>
+    </div>
+</div>
+
+<div class="payload-container">
+    <h3>Captured Payloads</h3>
+    <div class="payload-list" id="payloadList">
+        <div style="text-align: center; color: #999; padding: 40px; grid-column: 1/-1;">
+            Loading payloads...
+        </div>
+    </div>
+    
+    <div class="pagination" id="pagination"></div>
+</div>
+
+<div class="modal-overlay" id="payloadModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Payload Details</h3>
+            <button class="modal-close" onclick="closeModal()">&times;</button>
+        </div>
+        
+        <div class="modal-body">
+            <div class="tabs">
+                <button class="tab-btn active" onclick="showTab('overview')">Overview</button>
+                <button class="tab-btn" onclick="showTab('raw')">Raw Payload</button>
+                <button class="tab-btn" onclick="showTab('sensitive')">Sensitive Data</button>
+                <button class="tab-btn" onclick="showTab('characteristics')">Characteristics</button>
+            </div>
+            
+            <div id="overview" class="tab-content active">
+                <table class="details-table">
+                    <tr>
+                        <td>Timestamp</td>
+                        <td id="detail-timestamp"></td>
+                    </tr>
+                    <tr>
+                        <td>Source IP</td>
+                        <td id="detail-src-ip"></td>
+                    </tr>
+                    <tr>
+                        <td>Destination IP</td>
+                        <td id="detail-dst-ip"></td>
+                    </tr>
+                    <tr>
+                        <td>Port</td>
+                        <td id="detail-port"></td>
+                    </tr>
+                    <tr>
+                        <td>Protocol</td>
+                        <td id="detail-protocol"></td>
+                    </tr>
+                    <tr>
+                        <td>Hostname</td>
+                        <td id="detail-hostname">N/A</td>
+                    </tr>
+                    <tr>
+                        <td>HTTP Method</td>
+                        <td id="detail-method">N/A</td>
+                    </tr>
+                    <tr>
+                        <td>HTTP URL</td>
+                        <td id="detail-url">N/A</td>
+                    </tr>
+                    <tr>
+                        <td>User Agent</td>
+                        <td id="detail-ua" style="word-break: break-all; max-width: 500px;"></td>
+                    </tr>
+                    <tr>
+                        <td>Format</td>
+                        <td id="detail-format"></td>
+                    </tr>
+                    <tr>
+                        <td>Encoding</td>
+                        <td id="detail-encoding"></td>
+                    </tr>
+                    <tr>
+                        <td>Payload Size</td>
+                        <td id="detail-size"></td>
+                    </tr>
+                </table>
+            </div>
+            
+            <div id="raw" class="tab-content">
+                <div class="payload-display" id="detail-raw"></div>
+            </div>
+            
+            <div id="sensitive" class="tab-content">
+                <div id="sensitiveDataContainer"></div>
+            </div>
+            
+            <div id="characteristics" class="tab-content">
+                <div class="characteristics-grid" id="characteristicsGrid"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let currentPage = 1;
+    let itemsPerPage = 12;
+    let allPayloads = [];
+    let searchTimeout = null;
+    
+    async function loadPayloads() {
+        try {
+            const response = await apiCall('/payloads?limit=1000');
+            if (response && response.payloads) {
+                allPayloads = response.payloads;
+                updateStats();
+                displayPayloads();
+                loadDevices();
+            }
+        } catch (error) {
+            console.error('Error loading payloads:', error);
+        }
+    }
+    
+    async function loadDevices() {
+        try {
+            const response = await apiCall('/devices');
+            if (response && response.devices) {
+                const select = document.getElementById('filterDevice');
+                response.devices.forEach(device => {
+                    const option = document.createElement('option');
+                    option.value = device.id;
+                    option.textContent = device.device_name || device.mac_address;
+                    select.appendChild(option);
+                });
+            }
+        } catch (error) {
+            console.error('Error loading devices:', error);
+        }
+    }
+    
+    function updateStats() {
+        let jsonCount = 0;
+        let sensitiveCount = 0;
+        let binaryCount = 0;
+        
+        allPayloads.forEach(p => {
+            if (p.payload_format === 'JSON') jsonCount++;
+            if (p.payload_size > 0) sensitiveCount++;
+            if (p.payload_format === 'BINARY') binaryCount++;
+        });
+        
+        document.getElementById('totalPayloads').textContent = allPayloads.length;
+        document.getElementById('jsonCount').textContent = jsonCount;
+        document.getElementById('sensitiveCount').textContent = sensitiveCount;
+        document.getElementById('binaryCount').textContent = binaryCount;
+    }
+    
+    function applyFilters() {
+        const device = document.getElementById('filterDevice').value;
+        const format = document.getElementById('filterFormat').value;
+        const sensitive = document.getElementById('filterSensitive').value;
+        
+        let filtered = allPayloads;
+        
+        if (device) {
+            filtered = filtered.filter(p => p.device_id === parseInt(device));
+        }
+        
+        if (format) {
+            filtered = filtered.filter(p => p.payload_format === format);
+        }
+        
+        if (sensitive === 'true') {
+            filtered = filtered.filter(p => p.payload_size > 0);
+        } else if (sensitive === 'false') {
+            filtered = filtered.filter(p => p.payload_size === 0 || !p.payload_size);
+        }
+        
+        currentPage = 1;
+        displayPayloads(filtered);
+    }
+    
+    function debounceSearch() {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => {
+            applyFilters();
+        }, 300);
+    }
+    
+    function clearFilters() {
+        document.getElementById('filterDevice').value = '';
+        document.getElementById('filterFormat').value = '';
+        document.getElementById('filterSensitive').value = '';
+        document.getElementById('searchKeyword').value = '';
+        currentPage = 1;
+        displayPayloads();
+    }
+    
+    function displayPayloads(payloads = allPayloads) {
+        const start = (currentPage - 1) * itemsPerPage;
+        const end = start + itemsPerPage;
+        const pagePayloads = payloads.slice(start, end);
+        
+        const container = document.getElementById('payloadList');
+        
+        if (pagePayloads.length === 0) {
+            container.innerHTML = '<div style="text-align: center; color: #999; padding: 40px; grid-column: 1/-1;">No payloads found</div>';
+            document.getElementById('pagination').innerHTML = '';
+            return;
+        }
+        
+        let html = '';
+        pagePayloads.forEach(payload => {
+            const formatClass = `format-${payload.payload_format.toLowerCase()}`;
+            const timeStr = new Date(payload.timestamp).toLocaleString();
+            
+            html += `
+                <div class="payload-card" onclick="viewPayloadDetails(${payload.id})">
+                    <div class="payload-card-header">
+                        <div>
+                            <span class="payload-format-badge ${formatClass}">${payload.payload_format}</span>
+                        </div>
+                        <div style="font-size: 12px; color: #999;">${timeStr}</div>
+                    </div>
+                    <div class="payload-info">
+                        <div class="payload-info-item">
+                            <span class="payload-info-label">Source:</span> ${payload.source_ip}:${payload.source_port}
+                        </div>
+                        <div class="payload-info-item">
+                            <span class="payload-info-label">Destination:</span> ${payload.dest_ip}:${payload.dest_port}
+                        </div>
+                        <div class="payload-info-item">
+                            <span class="payload-info-label">Size:</span> ${payload.payload_size} bytes
+                        </div>
+                        <div class="payload-info-item">
+                            <span class="payload-info-label">Encoding:</span> ${payload.payload_encoding || 'unknown'}
+                        </div>
+                        ${payload.hostname ? `<div class="payload-info-item"><span class="payload-info-label">Host:</span> ${payload.hostname}</div>` : ''}
+                        ${payload.http_method ? `<div class="payload-info-item"><span class="payload-info-label">Method:</span> ${payload.http_method}</div>` : ''}
+                    </div>
+                </div>
+            `;
+        });
+        
+        container.innerHTML = html;
+        
+        const totalPages = Math.ceil(payloads.length / itemsPerPage);
+        displayPagination(totalPages, payloads.length);
+    }
+    
+    function displayPagination(totalPages, totalItems) {
+        const pagination = document.getElementById('pagination');
+        let html = '';
+        
+        if (currentPage > 1) {
+            html += `<a onclick="changePage(1)">« First</a>`;
+            html += `<a onclick="changePage(${currentPage - 1})">‹ Prev</a>`;
+        }
+        
+        for (let i = Math.max(1, currentPage - 2); i <= Math.min(totalPages, currentPage + 2); i++) {
+            if (i === currentPage) {
+                html += `<span class="active">${i}</span>`;
+            } else {
+                html += `<a onclick="changePage(${i})">${i}</a>`;
+            }
+        }
+        
+        if (currentPage < totalPages) {
+            html += `<a onclick="changePage(${currentPage + 1})">Next ›</a>`;
+            html += `<a onclick="changePage(${totalPages})">Last »</a>`;
+        }
+        
+        html += `<span style="margin-left: 20px; color: #999;">Total: ${totalItems} payloads</span>`;
+        pagination.innerHTML = html;
+    }
+    
+    function changePage(page) {
+        currentPage = page;
+        displayPayloads();
+        window.scrollTo(0, 0);
+    }
+    
+    async function viewPayloadDetails(payloadId) {
+        try {
+            const response = await apiCall(`/payloads/${payloadId}`);
+            if (response) {
+                populatePayloadModal(response);
+                document.getElementById('payloadModal').classList.add('active');
+            }
+        } catch (error) {
+            alert('Error loading payload details: ' + error);
+        }
+    }
+    
+    function populatePayloadModal(data) {
+        document.getElementById('detail-timestamp').textContent = new Date(data.timestamp).toLocaleString();
+        document.getElementById('detail-src-ip').textContent = data.source_ip;
+        document.getElementById('detail-dst-ip').textContent = data.dest_ip;
+        document.getElementById('detail-port').textContent = `${data.source_port} → ${data.dest_port}`;
+        document.getElementById('detail-protocol').textContent = data.protocol || 'TCP';
+        document.getElementById('detail-hostname').textContent = data.hostname || 'N/A';
+        document.getElementById('detail-method').textContent = data.http_method || 'N/A';
+        document.getElementById('detail-url').textContent = data.http_url || 'N/A';
+        document.getElementById('detail-ua').textContent = data.user_agent || 'N/A';
+        document.getElementById('detail-format').textContent = data.payload_format || 'Unknown';
+        document.getElementById('detail-encoding').textContent = data.payload_encoding || 'Unknown';
+        document.getElementById('detail-size').textContent = (data.payload_size || 0) + ' bytes';
+        
+        document.getElementById('detail-raw').textContent = data.payload_display || 'No payload data';
+        
+        if (data.sensitive_data && Object.keys(data.sensitive_data).length > 0) {
+            populateSensitiveData(data.sensitive_data);
+        } else {
+            document.getElementById('sensitiveDataContainer').innerHTML = '<p style="color: #999;">No sensitive data detected</p>';
+        }
+        
+        if (data.characteristics) {
+            populateCharacteristics(data.characteristics);
+        }
+    }
+    
+    function populateSensitiveData(sensitive) {
+        let html = '';
+        
+        if (sensitive.api_keys && sensitive.api_keys.length > 0) {
+            html += '<div class="sensitive-item">';
+            html += '<div class="sensitive-label">API Keys Found</div>';
+            sensitive.api_keys.forEach(key => {
+                html += `<div class="sensitive-value">${key.substring(0, 10)}...</div>`;
+            });
+            html += '</div>';
+        }
+        
+        if (sensitive.email_addresses && sensitive.email_addresses.length > 0) {
+            html += '<div class="sensitive-item">';
+            html += '<div class="sensitive-label">Email Addresses</div>';
+            sensitive.email_addresses.forEach(email => {
+                html += `<div class="sensitive-value">${email}</div>`;
+            });
+            html += '</div>';
+        }
+        
+        if (sensitive.urls && sensitive.urls.length > 0) {
+            html += '<div class="sensitive-item">';
+            html += '<div class="sensitive-label">URLs</div>';
+            sensitive.urls.forEach(url => {
+                html += `<div class="sensitive-value">${url.substring(0, 80)}...</div>`;
+            });
+            html += '</div>';
+        }
+        
+        if (sensitive.suspicious_keywords && sensitive.suspicious_keywords.length > 0) {
+            html += '<div class="sensitive-item">';
+            html += '<div class="sensitive-label">Suspicious Keywords</div>';
+            sensitive.suspicious_keywords.forEach(keyword => {
+                html += `<div class="sensitive-value">${keyword}</div>`;
+            });
+            html += '</div>';
+        }
+        
+        document.getElementById('sensitiveDataContainer').innerHTML = html || '<p style="color: #999;">No sensitive data detected</p>';
+    }
+    
+    function populateCharacteristics(chars) {
+        let html = '';
+        
+        if (chars.length !== undefined) {
+            html += `<div class="char-box"><div class="char-label">Size (bytes)</div><div class="char-value">${chars.length}</div></div>`;
+        }
+        
+        if (chars.entropy !== undefined) {
+            html += `<div class="char-box"><div class="char-label">Entropy</div><div class="char-value">${chars.entropy.toFixed(2)}</div></div>`;
+        }
+        
+        if (chars.printable_ratio !== undefined) {
+            html += `<div class="char-box"><div class="char-label">Printable %</div><div class="char-value">${(chars.printable_ratio * 100).toFixed(0)}%</div></div>`;
+        }
+        
+        if (chars.null_bytes !== undefined) {
+            html += `<div class="char-box"><div class="char-label">Null Bytes</div><div class="char-value">${chars.null_bytes}</div></div>`;
+        }
+        
+        document.getElementById('characteristicsGrid').innerHTML = html;
+    }
+    
+    function showTab(tabName) {
+        document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+        document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+        
+        document.getElementById(tabName).classList.add('active');
+        event.target.classList.add('active');
+    }
+    
+    function closeModal() {
+        document.getElementById('payloadModal').classList.remove('active');
+    }
+    
+    loadPayloads();
+    setInterval(loadPayloads, 30000);
+</script>
+{% endblock %}

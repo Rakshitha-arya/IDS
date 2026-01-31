@@ -1,0 +1,369 @@
+{% extends "base.html" %}
+
+{% block title %}Alerts - WiFi IDS{% endblock %}
+
+{% block extra_css %}
+<style>
+    .filters {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        display: flex;
+        gap: 15px;
+        align-items: flex-end;
+    }
+    
+    .filter-group {
+        flex: 1;
+        min-width: 150px;
+    }
+    
+    .filter-group label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: 500;
+        font-size: 14px;
+    }
+    
+    .filter-group select {
+        width: 100%;
+        padding: 8px;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        font-size: 14px;
+    }
+    
+    .alerts-container {
+        background: white;
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .alert-item {
+        padding: 20px;
+        border-bottom: 1px solid #dee2e6;
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        transition: background-color 0.3s;
+    }
+    
+    .alert-item:hover {
+        background-color: #f8f9fa;
+    }
+    
+    .alert-item:last-child {
+        border-bottom: none;
+    }
+    
+    .alert-severity {
+        width: 4px;
+        height: 100%;
+        position: absolute;
+        left: 0;
+        top: 0;
+    }
+    
+    .alert-content {
+        flex: 1;
+    }
+    
+    .alert-title {
+        font-weight: 600;
+        font-size: 16px;
+        margin-bottom: 5px;
+    }
+    
+    .alert-description {
+        color: #666;
+        font-size: 14px;
+        margin-bottom: 8px;
+    }
+    
+    .alert-meta {
+        display: flex;
+        gap: 20px;
+        font-size: 13px;
+        color: #999;
+    }
+    
+    .alert-actions {
+        display: flex;
+        gap: 10px;
+    }
+    
+    .badge-sm {
+        padding: 2px 6px;
+        font-size: 11px;
+        border-radius: 3px;
+        display: inline-block;
+    }
+    
+    .pagination {
+        text-align: center;
+        padding: 20px;
+        gap: 10px;
+    }
+    
+    .pagination a, .pagination span {
+        padding: 8px 12px;
+        margin: 0 2px;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        color: #667eea;
+        cursor: pointer;
+        display: inline-block;
+    }
+    
+    .pagination a:hover {
+        background-color: #f8f9fa;
+    }
+    
+    .pagination .active {
+        background-color: #667eea;
+        color: white;
+        border-color: #667eea;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="margin-bottom: 30px;">
+    <h2>Alerts</h2>
+    <p style="color: #999;">Security alerts and detections</p>
+</div>
+
+<div class="filters">
+    <div class="filter-group">
+        <label>Severity</label>
+        <select id="filterSeverity" onchange="applyFilters()">
+            <option value="">All Severities</option>
+            <option value="critical">Critical</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+        </select>
+    </div>
+    
+    <div class="filter-group">
+        <label>Status</label>
+        <select id="filterStatus" onchange="applyFilters()">
+            <option value="">All</option>
+            <option value="unacknowledged">Unacknowledged</option>
+            <option value="acknowledged">Acknowledged</option>
+        </select>
+    </div>
+    
+    <div class="filter-group">
+        <label>Device</label>
+        <select id="filterDevice" onchange="applyFilters()">
+            <option value="">All Devices</option>
+        </select>
+    </div>
+    
+    <button class="btn" onclick="refreshAlerts()">Filter</button>
+    <button class="btn btn-secondary" onclick="clearFilters()">Clear</button>
+</div>
+
+<div class="alerts-container" id="alertsList">
+    <div style="padding: 40px; text-align: center; color: #999;">
+        <p>Loading alerts...</p>
+    </div>
+</div>
+
+<div class="pagination" id="pagination"></div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let currentPage = 1;
+    let itemsPerPage = 20;
+    let allAlerts = [];
+    
+    async function loadAlerts() {
+        try {
+            const response = await apiCall('/alerts?limit=1000');
+            if (response && response.alerts) {
+                allAlerts = response.alerts;
+                displayAlerts();
+                loadDevices();
+            }
+        } catch (error) {
+            console.error('Error loading alerts:', error);
+        }
+    }
+    
+    async function loadDevices() {
+        try {
+            const response = await apiCall('/devices');
+            if (response && response.devices) {
+                const select = document.getElementById('filterDevice');
+                response.devices.forEach(device => {
+                    const option = document.createElement('option');
+                    option.value = device.id;
+                    option.textContent = device.device_name || device.mac_address;
+                    select.appendChild(option);
+                });
+            }
+        } catch (error) {
+            console.error('Error loading devices:', error);
+        }
+    }
+    
+    function applyFilters() {
+        const severity = document.getElementById('filterSeverity').value;
+        const status = document.getElementById('filterStatus').value;
+        const device = document.getElementById('filterDevice').value;
+        
+        let filtered = allAlerts;
+        
+        if (severity) {
+            filtered = filtered.filter(a => a.severity === severity);
+        }
+        
+        if (status === 'acknowledged') {
+            filtered = filtered.filter(a => a.acknowledged);
+        } else if (status === 'unacknowledged') {
+            filtered = filtered.filter(a => !a.acknowledged);
+        }
+        
+        if (device) {
+            filtered = filtered.filter(a => a.device_id === parseInt(device));
+        }
+        
+        currentPage = 1;
+        displayAlerts(filtered);
+    }
+    
+    function clearFilters() {
+        document.getElementById('filterSeverity').value = '';
+        document.getElementById('filterStatus').value = '';
+        document.getElementById('filterDevice').value = '';
+        currentPage = 1;
+        displayAlerts();
+    }
+    
+    function displayAlerts(alerts = allAlerts) {
+        const start = (currentPage - 1) * itemsPerPage;
+        const end = start + itemsPerPage;
+        const pageAlerts = alerts.slice(start, end);
+        
+        const container = document.getElementById('alertsList');
+        
+        if (pageAlerts.length === 0) {
+            container.innerHTML = '<div style="padding: 40px; text-align: center; color: #999;"><p>No alerts found</p></div>';
+            document.getElementById('pagination').innerHTML = '';
+            return;
+        }
+        
+        let html = '';
+        pageAlerts.forEach(alert => {
+            const severityClass = `alert-${alert.severity}`;
+            html += `
+                <div class="alert-item">
+                    <div style="width: 4px; height: 100%; background: ${getSeverityColor(alert.severity)}; position: absolute; left: 0; top: 0;"></div>
+                    <div style="flex: 1;">
+                        <div class="alert-title" style="margin-left: 15px;">
+                            ${alert.title}
+                        </div>
+                        <div class="alert-description" style="margin-left: 15px;">
+                            ${alert.description || 'No description'}
+                        </div>
+                        <div class="alert-meta" style="margin-left: 15px;">
+                            <span>${severityBadge(alert.severity)}</span>
+                            <span><strong>Type:</strong> ${alert.alert_type}</span>
+                            <span><strong>Time:</strong> ${formatDate(alert.timestamp)}</span>
+                            <span><strong>Source:</strong> ${alert.source_ip || 'N/A'}</span>
+                            <span>${alert.acknowledged ? '<strong style="color: #28a745;">✓ Acknowledged</strong>' : '<strong style="color: #999;">Pending</strong>'}</span>
+                        </div>
+                    </div>
+                    <div class="alert-actions">
+                        <button class="btn btn-sm" onclick="viewAlertDetails(${alert.id})">View</button>
+                        ${!alert.acknowledged ? `<button class="btn btn-success btn-sm" onclick="acknowledgeAlert(${alert.id})">Acknowledge</button>` : ''}
+                    </div>
+                </div>
+            `;
+        });
+        
+        container.innerHTML = html;
+        
+        const totalPages = Math.ceil(alerts.length / itemsPerPage);
+        displayPagination(totalPages, alerts.length);
+    }
+    
+    function displayPagination(totalPages, totalItems) {
+        const pagination = document.getElementById('pagination');
+        let html = '';
+        
+        if (currentPage > 1) {
+            html += `<a onclick="changePage(1)">« First</a>`;
+            html += `<a onclick="changePage(${currentPage - 1})">‹ Prev</a>`;
+        }
+        
+        for (let i = Math.max(1, currentPage - 2); i <= Math.min(totalPages, currentPage + 2); i++) {
+            if (i === currentPage) {
+                html += `<span class="active">${i}</span>`;
+            } else {
+                html += `<a onclick="changePage(${i})">${i}</a>`;
+            }
+        }
+        
+        if (currentPage < totalPages) {
+            html += `<a onclick="changePage(${currentPage + 1})">Next ›</a>`;
+            html += `<a onclick="changePage(${totalPages})">Last »</a>`;
+        }
+        
+        html += `<span style="margin-left: 20px; color: #999;">Total: ${totalItems} alerts</span>`;
+        pagination.innerHTML = html;
+    }
+    
+    function changePage(page) {
+        currentPage = page;
+        displayAlerts();
+        window.scrollTo(0, 0);
+    }
+    
+    function getSeverityColor(severity) {
+        const colors = {
+            'critical': '#f44',
+            'high': '#ff9800',
+            'medium': '#0d6efd',
+            'low': '#198754'
+        };
+        return colors[severity] || '#999';
+    }
+    
+    function viewAlertDetails(alertId) {
+        alert('Alert details view - Feature to be implemented');
+    }
+    
+    async function acknowledgeAlert(alertId) {
+        const notes = prompt('Enter acknowledgment notes:');
+        if (notes !== null) {
+            try {
+                const response = await apiCall(`/alerts/${alertId}/acknowledge`, 'POST', {
+                    acknowledged_by: 'WebUI User',
+                    notes: notes
+                });
+                
+                if (response) {
+                    alert('Alert acknowledged');
+                    loadAlerts();
+                }
+            } catch (error) {
+                alert('Error acknowledging alert: ' + error);
+            }
+        }
+    }
+    
+    function refreshAlerts() {
+        applyFilters();
+    }
+    
+    loadAlerts();
+    setInterval(loadAlerts, 30000);
+</script>
+{% endblock %}

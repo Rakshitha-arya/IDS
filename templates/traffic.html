@@ -1,0 +1,311 @@
+{% extends "base.html" %}
+
+{% block title %}Traffic - WiFi IDS{% endblock %}
+
+{% block extra_css %}
+<style>
+    .traffic-controls {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        display: flex;
+        gap: 15px;
+        align-items: flex-end;
+    }
+    
+    .control-group {
+        flex: 1;
+        min-width: 150px;
+    }
+    
+    .control-group label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: 500;
+        font-size: 14px;
+    }
+    
+    .control-group select, .control-group input {
+        width: 100%;
+        padding: 8px;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        font-size: 14px;
+    }
+    
+    .traffic-table {
+        background: white;
+        border-radius: 8px;
+        overflow: auto;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .traffic-table table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    
+    .traffic-table thead {
+        background: #f8f9fa;
+        border-bottom: 2px solid #dee2e6;
+        position: sticky;
+        top: 0;
+    }
+    
+    .traffic-table th {
+        padding: 12px;
+        text-align: left;
+        font-weight: 600;
+        color: #495057;
+        font-size: 13px;
+    }
+    
+    .traffic-table td {
+        padding: 12px;
+        border-bottom: 1px solid #dee2e6;
+        font-size: 13px;
+    }
+    
+    .traffic-table tr:hover {
+        background-color: #f8f9fa;
+    }
+    
+    .protocol-badge {
+        display: inline-block;
+        padding: 3px 8px;
+        border-radius: 3px;
+        font-weight: 600;
+        font-size: 11px;
+    }
+    
+    .protocol-tcp {
+        background: #cfe2ff;
+        color: #084298;
+    }
+    
+    .protocol-udp {
+        background: #d1e7dd;
+        color: #0f5132;
+    }
+    
+    .protocol-icmp {
+        background: #f8d7da;
+        color: #842029;
+    }
+    
+    .service-badge {
+        display: inline-block;
+        padding: 3px 8px;
+        border-radius: 3px;
+        font-size: 11px;
+        background: #e7f3ff;
+        color: #0066cc;
+    }
+    
+    .ip-address {
+        font-family: 'Courier New', monospace;
+        font-size: 12px;
+    }
+    
+    .no-data {
+        text-align: center;
+        padding: 40px;
+        color: #999;
+    }
+    
+    .refresh-indicator {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #28a745;
+        margin-right: 8px;
+        animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="margin-bottom: 30px;">
+    <h2>Network Traffic <span class="refresh-indicator" id="refreshIndicator"></span></h2>
+    <p style="color: #999;">Real-time packet analysis and monitoring</p>
+</div>
+
+<div class="traffic-controls">
+    <div class="control-group">
+        <label>Filter by Protocol</label>
+        <select id="filterProtocol" onchange="applyFilters()">
+            <option value="">All Protocols</option>
+            <option value="TCP">TCP</option>
+            <option value="UDP">UDP</option>
+            <option value="ICMP">ICMP</option>
+        </select>
+    </div>
+    
+    <div class="control-group">
+        <label>Filter by Service</label>
+        <select id="filterService" onchange="applyFilters()">
+            <option value="">All Services</option>
+            <option value="HTTP">HTTP</option>
+            <option value="HTTPS">HTTPS</option>
+            <option value="DNS">DNS</option>
+            <option value="Other">Other</option>
+        </select>
+    </div>
+    
+    <div class="control-group">
+        <label>Refresh Rate</label>
+        <select id="refreshRate">
+            <option value="3">Every 3 seconds</option>
+            <option value="5" selected>Every 5 seconds</option>
+            <option value="10">Every 10 seconds</option>
+            <option value="30">Every 30 seconds</option>
+        </select>
+    </div>
+    
+    <button class="btn" onclick="refreshTraffic()">Refresh Now</button>
+    <button class="btn btn-secondary" onclick="clearFilters()">Clear Filters</button>
+</div>
+
+<div class="traffic-table">
+    <table>
+        <thead>
+            <tr>
+                <th style="width: 140px;">Timestamp</th>
+                <th style="width: 110px;">Source IP</th>
+                <th style="width: 40px;">Port</th>
+                <th style="width: 110px;">Dest IP</th>
+                <th style="width: 40px;">Port</th>
+                <th style="width: 80px;">Protocol</th>
+                <th style="width: 70px;">Service</th>
+                <th style="width: 80px;">Size (bytes)</th>
+            </tr>
+        </thead>
+        <tbody id="trafficBody">
+            <tr>
+                <td colspan="8" class="no-data">Loading traffic data...</td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+
+<div style="margin-top: 20px; text-align: center; color: #999;">
+    <p>Total packets displayed: <span id="packetCount">0</span></p>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let allPackets = [];
+    let refreshInterval = null;
+    
+    async function loadPackets() {
+        try {
+            const response = await fetch('/api/packets?limit=100');
+            if (response.ok) {
+                const data = await response.json();
+                allPackets = data.packets || [];
+                displayPackets(allPackets);
+                pulseRefreshIndicator();
+            }
+        } catch (error) {
+            console.error('Error loading packets:', error);
+        }
+    }
+    
+    function displayPackets(packets) {
+        const tbody = document.getElementById('trafficBody');
+        
+        if (packets.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" class="no-data">No traffic captured yet. Start packet capture to see data.</td></tr>';
+            document.getElementById('packetCount').textContent = '0';
+            return;
+        }
+        
+        let html = '';
+        packets.forEach(packet => {
+            const timestamp = formatDate(packet.timestamp);
+            const protocol = packet.protocol || 'Unknown';
+            const protocolClass = `protocol-${protocol.toLowerCase()}`;
+            const service = packet.service || 'Other';
+            const srcPort = packet.src_port || '-';
+            const dstPort = packet.dst_port || '-';
+            const size = packet.payload_size || 0;
+            
+            html += `
+                <tr>
+                    <td>${timestamp}</td>
+                    <td class="ip-address">${packet.src_ip || '-'}</td>
+                    <td>${srcPort}</td>
+                    <td class="ip-address">${packet.dst_ip || '-'}</td>
+                    <td>${dstPort}</td>
+                    <td><span class="protocol-badge ${protocolClass}">${protocol}</span></td>
+                    <td><span class="service-badge">${service}</span></td>
+                    <td>${size}</td>
+                </tr>
+            `;
+        });
+        
+        tbody.innerHTML = html;
+        document.getElementById('packetCount').textContent = packets.length;
+    }
+    
+    function applyFilters() {
+        const protocol = document.getElementById('filterProtocol').value;
+        const service = document.getElementById('filterService').value;
+        
+        let filtered = allPackets;
+        
+        if (protocol) {
+            filtered = filtered.filter(p => p.protocol === protocol);
+        }
+        
+        if (service) {
+            filtered = filtered.filter(p => p.service === service);
+        }
+        
+        displayPackets(filtered);
+    }
+    
+    function clearFilters() {
+        document.getElementById('filterProtocol').value = '';
+        document.getElementById('filterService').value = '';
+        displayPackets(allPackets);
+    }
+    
+    function refreshTraffic() {
+        loadPackets();
+    }
+    
+    function pulseRefreshIndicator() {
+        const indicator = document.getElementById('refreshIndicator');
+        indicator.style.animation = 'none';
+        setTimeout(() => {
+            indicator.style.animation = 'pulse 2s infinite';
+        }, 10);
+    }
+    
+    function updateRefreshRate() {
+        const rate = parseInt(document.getElementById('refreshRate').value);
+        
+        if (refreshInterval) {
+            clearInterval(refreshInterval);
+        }
+        
+        loadPackets();
+        refreshInterval = setInterval(loadPackets, rate * 1000);
+    }
+    
+    document.getElementById('refreshRate').addEventListener('change', updateRefreshRate);
+    
+    loadPackets();
+    updateRefreshRate();
+</script>
+{% endblock %}

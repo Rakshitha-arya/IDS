@@ -1,0 +1,345 @@
+{% extends "base.html" %}
+
+{% block title %}Policies - WiFi IDS Dashboard{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+    <h2>Security Policies</h2>
+    <button class="btn btn-success" onclick="showCreatePolicyModal()">+ Create Policy</button>
+</div>
+
+<div class="card" style="margin-bottom: 20px;">
+    <h3>Policy Filters</h3>
+    <div style="display: flex; gap: 15px;">
+        <div style="flex: 1;">
+            <label>Policy Level:</label>
+            <select id="policyLevelFilter" onchange="loadPolicies()">
+                <option value="">All Levels</option>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+            </select>
+        </div>
+        <div style="flex: 1;">
+            <label>Action:</label>
+            <select id="policyActionFilter" onchange="loadPolicies()">
+                <option value="">All Actions</option>
+                <option value="alert">Alert</option>
+                <option value="block">Block</option>
+                <option value="log">Log</option>
+            </select>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <h3>Active Policies</h3>
+    <div style="overflow-x: auto;">
+        <table>
+            <thead>
+                <tr>
+                    <th>Policy Name</th>
+                    <th>Level</th>
+                    <th>Action</th>
+                    <th>Conditions</th>
+                    <th>Description</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="policiesTableBody">
+                <tr>
+                    <td colspan="6" style="text-align: center; padding: 40px;">
+                        <div style="color: #999;">Loading policies...</div>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div id="createPolicyModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>Create New Policy</h2>
+            <span class="close-btn" onclick="closeModal('createPolicyModal')">&times;</span>
+        </div>
+        <div class="form-group">
+            <label for="policyName">Policy Name:</label>
+            <input type="text" id="policyName" placeholder="e.g., Block SQL Injection">
+        </div>
+        <div class="form-group">
+            <label for="policyLevel">Policy Level:</label>
+            <select id="policyLevel">
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="policyAction">Action:</label>
+            <select id="policyAction">
+                <option value="alert">Alert</option>
+                <option value="block">Block</option>
+                <option value="log">Log</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="policyConditions">Conditions (JSON):</label>
+            <textarea id="policyConditions" rows="5" placeholder='{"category": "malware"}'></textarea>
+        </div>
+        <div class="form-group">
+            <label for="policyDescription">Description:</label>
+            <textarea id="policyDescription" rows="3" placeholder="Describe this policy..."></textarea>
+        </div>
+        <div style="display: flex; gap: 10px;">
+            <button class="btn btn-success" onclick="createPolicy()">Create</button>
+            <button class="btn btn-secondary" onclick="closeModal('createPolicyModal')">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<div id="editPolicyModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>Edit Policy</h2>
+            <span class="close-btn" onclick="closeModal('editPolicyModal')">&times;</span>
+        </div>
+        <input type="hidden" id="editPolicyId">
+        <div class="form-group">
+            <label for="editPolicyName">Policy Name:</label>
+            <input type="text" id="editPolicyName">
+        </div>
+        <div class="form-group">
+            <label for="editPolicyLevel">Policy Level:</label>
+            <select id="editPolicyLevel">
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="editPolicyAction">Action:</label>
+            <select id="editPolicyAction">
+                <option value="alert">Alert</option>
+                <option value="block">Block</option>
+                <option value="log">Log</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="editPolicyConditions">Conditions (JSON):</label>
+            <textarea id="editPolicyConditions" rows="5"></textarea>
+        </div>
+        <div class="form-group">
+            <label for="editPolicyDescription">Description:</label>
+            <textarea id="editPolicyDescription" rows="3"></textarea>
+        </div>
+        <div style="display: flex; gap: 10px;">
+            <button class="btn btn-success" onclick="updatePolicy()">Update</button>
+            <button class="btn btn-danger" onclick="deletePolicy()">Delete</button>
+            <button class="btn btn-secondary" onclick="closeModal('editPolicyModal')">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    async function loadPolicies() {
+        try {
+            const levelFilter = document.getElementById('policyLevelFilter').value;
+            const actionFilter = document.getElementById('policyActionFilter').value;
+            
+            let url = '/api/v1/policies';
+            const params = new URLSearchParams();
+            if (levelFilter) params.append('policy_level', levelFilter);
+            if (actionFilter) params.append('action', actionFilter);
+            
+            const queryString = params.toString();
+            if (queryString) url += '?' + queryString;
+            
+            const response = await fetch(url);
+            const data = await response.json();
+            
+            const tbody = document.getElementById('policiesTableBody');
+            tbody.innerHTML = '';
+            
+            if (data.policies && data.policies.length > 0) {
+                data.policies.forEach(policy => {
+                    const row = document.createElement('tr');
+                    let conditions = policy.conditions;
+                    try {
+                        const condObj = JSON.parse(conditions);
+                        conditions = JSON.stringify(condObj, null, 2).substring(0, 50) + '...';
+                    } catch (e) {
+                        conditions = conditions.substring(0, 50) + '...';
+                    }
+                    
+                    row.innerHTML = `
+                        <td><strong>${policy.rule_name}</strong></td>
+                        <td><span class="badge badge-${policy.policy_level}">${policy.policy_level.toUpperCase()}</span></td>
+                        <td><span class="badge" style="background-color: #6c757d; color: white;">${policy.action.toUpperCase()}</span></td>
+                        <td><code style="font-size: 12px;">${conditions}</code></td>
+                        <td>${policy.description || '-'}</td>
+                        <td>
+                            <button class="btn" style="padding: 5px 10px; font-size: 12px;" onclick="editPolicy(${policy.id})">Edit</button>
+                        </td>
+                    `;
+                    tbody.appendChild(row);
+                });
+            } else {
+                const row = document.createElement('tr');
+                row.innerHTML = '<td colspan="6" style="text-align: center; padding: 40px;">No policies found</td>';
+                tbody.appendChild(row);
+            }
+        } catch (error) {
+            console.error('Error loading policies:', error);
+            const tbody = document.getElementById('policiesTableBody');
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 40px; color: red;">Error loading policies</td></tr>';
+        }
+    }
+
+    function showCreatePolicyModal() {
+        document.getElementById('createPolicyModal').classList.add('show');
+    }
+
+    function closeModal(modalId) {
+        document.getElementById(modalId).classList.remove('show');
+    }
+
+    async function createPolicy() {
+        const name = document.getElementById('policyName').value;
+        const level = document.getElementById('policyLevel').value;
+        const action = document.getElementById('policyAction').value;
+        const conditions = document.getElementById('policyConditions').value;
+        const description = document.getElementById('policyDescription').value;
+        
+        if (!name || !conditions) {
+            alert('Please fill in all required fields');
+            return;
+        }
+        
+        try {
+            const response = await fetch('/api/v1/policies', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    rule_name: name,
+                    policy_level: level,
+                    action: action,
+                    conditions: conditions,
+                    description: description
+                })
+            });
+            
+            if (response.ok) {
+                closeModal('createPolicyModal');
+                document.getElementById('policyName').value = '';
+                document.getElementById('policyConditions').value = '';
+                document.getElementById('policyDescription').value = '';
+                loadPolicies();
+                alert('Policy created successfully');
+            } else {
+                alert('Error creating policy');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Error creating policy');
+        }
+    }
+
+    async function editPolicy(policyId) {
+        try {
+            const response = await fetch(`/api/v1/policies/${policyId}`);
+            const data = await response.json();
+            const policy = data.policy;
+            
+            document.getElementById('editPolicyId').value = policyId;
+            document.getElementById('editPolicyName').value = policy.rule_name;
+            document.getElementById('editPolicyLevel').value = policy.policy_level;
+            document.getElementById('editPolicyAction').value = policy.action;
+            document.getElementById('editPolicyConditions').value = policy.conditions;
+            document.getElementById('editPolicyDescription').value = policy.description || '';
+            
+            document.getElementById('editPolicyModal').classList.add('show');
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Error loading policy');
+        }
+    }
+
+    async function updatePolicy() {
+        const policyId = document.getElementById('editPolicyId').value;
+        const name = document.getElementById('editPolicyName').value;
+        const level = document.getElementById('editPolicyLevel').value;
+        const action = document.getElementById('editPolicyAction').value;
+        const conditions = document.getElementById('editPolicyConditions').value;
+        const description = document.getElementById('editPolicyDescription').value;
+        
+        try {
+            const response = await fetch(`/api/v1/policies/${policyId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    rule_name: name,
+                    policy_level: level,
+                    action: action,
+                    conditions: conditions,
+                    description: description
+                })
+            });
+            
+            if (response.ok) {
+                closeModal('editPolicyModal');
+                loadPolicies();
+                alert('Policy updated successfully');
+            } else {
+                alert('Error updating policy');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Error updating policy');
+        }
+    }
+
+    async function deletePolicy() {
+        if (!confirm('Are you sure you want to delete this policy?')) {
+            return;
+        }
+        
+        const policyId = document.getElementById('editPolicyId').value;
+        
+        try {
+            const response = await fetch(`/api/v1/policies/${policyId}`, {
+                method: 'DELETE'
+            });
+            
+            if (response.ok) {
+                closeModal('editPolicyModal');
+                loadPolicies();
+                alert('Policy deleted successfully');
+            } else {
+                alert('Error deleting policy');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Error deleting policy');
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        loadPolicies();
+    });
+
+    document.addEventListener('click', function(event) {
+        if (event.target.classList.contains('modal')) {
+            event.target.classList.remove('show');
+        }
+    });
+</script>
+
+<style>
+    code {
+        background-color: #f5f5f5;
+        padding: 2px 4px;
+        border-radius: 3px;
+    }
+</style>
+{% endblock %}
